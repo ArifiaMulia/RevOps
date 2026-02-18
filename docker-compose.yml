@@ -1,5 +1,3 @@
-version: "3.8"
-
 services:
   app:
     container_name: prasetia-revops-hub
@@ -16,11 +14,20 @@ services:
       retries: 3
     labels:
       - "traefik.enable=true"
-      - "traefik.http.routers.revops-web-router.rule=Host(`revops.virtuenet.space`)"
-      - "traefik.http.routers.revops-web-router.entrypoints=https"
-      - "traefik.http.routers.revops-web-router.tls.certresolver=letsencrypt"
-      - "traefik.http.routers.revops-web-router.priority=100"
-      - "traefik.http.services.revops-web-service.loadbalancer.server.port=80"
+      - "traefik.docker.network=coolify"
+      # HTTPS router
+      - "traefik.http.routers.revops.rule=Host(`revops.virtuenet.space`)"
+      - "traefik.http.routers.revops.entrypoints=https"
+      - "traefik.http.routers.revops.tls=true"
+      - "traefik.http.routers.revops.tls.certresolver=letsencrypt"
+      - "traefik.http.routers.revops.service=revops"
+      - "traefik.http.services.revops.loadbalancer.server.port=8000"
+      # HTTP router (redirect to HTTPS)
+      - "traefik.http.routers.revops-http.rule=Host(`revops.virtuenet.space`)"
+      - "traefik.http.routers.revops-http.entrypoints=http"
+      - "traefik.http.routers.revops-http.middlewares=revops-redirect-https"
+      - "traefik.http.routers.revops-http.service=revops"
+      - "traefik.http.middlewares.revops-redirect-https.redirectscheme.scheme=https"
     networks:
       - coolify
 
