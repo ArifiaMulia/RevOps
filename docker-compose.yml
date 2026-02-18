@@ -9,21 +9,27 @@ services:
       - NODE_ENV=production
       - PORT=3001
     healthcheck:
-      test: ["CMD", "wget", "-q", "--spider", "http://localhost:3001/health"]
+      test:
+        ["CMD", "wget", "-q", "--spider", "http://localhost:3001/api/health"]
       interval: 30s
       timeout: 10s
       retries: 3
     labels:
       - "traefik.enable=true"
+      # Network accessibility
+      - "traefik.docker.network=coolify"
+      # HTTPS Router
       - "traefik.http.routers.revops-frontend.rule=Host(`revops.virtuenet.space`)"
       - "traefik.http.routers.revops-frontend.entrypoints=https"
       - "traefik.http.routers.revops-frontend.tls=true"
       - "traefik.http.routers.revops-frontend.tls.certresolver=letsencrypt"
       - "traefik.http.services.revops-frontend.loadbalancer.server.port=3001"
-      - "traefik.http.routers.revops-frontend.priority=10"
+      - "traefik.http.routers.revops-frontend.priority=100"
+      # HTTP Router (Redirect)
       - "traefik.http.routers.revops-http.rule=Host(`revops.virtuenet.space`)"
       - "traefik.http.routers.revops-http.entrypoints=http"
       - "traefik.http.routers.revops-http.middlewares=redirect-to-https"
+      - "traefik.http.routers.revops-http.service=revops-frontend"
       - "traefik.http.middlewares.redirect-to-https.redirectscheme.scheme=https"
     networks:
       - coolify
