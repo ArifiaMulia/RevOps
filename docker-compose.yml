@@ -4,16 +4,26 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
-    ports:
-      - "3999:3999"
     restart: always
     env_file:
       - .env
     environment:
       - NODE_ENV=production
-      - PORT=3999
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:3999/api/health"]
       interval: 30s
       timeout: 10s
       retries: 3
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.revops-web-router.rule=Host(`revops.virtuenet.space`)"
+      - "traefik.http.routers.revops-web-router.entrypoints=https"
+      - "traefik.http.routers.revops-web-router.tls.certresolver=letsencrypt"
+      - "traefik.http.routers.revops-web-router.priority=100"
+      - "traefik.http.services.revops-web-service.loadbalancer.server.port=80"
+    networks:
+      - coolify
+
+networks:
+  coolify:
+    external: true
