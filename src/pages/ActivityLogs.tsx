@@ -3,7 +3,7 @@ import { Card, CardHeader, CardTitle, CardDescription, CardContent } from "@/com
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Table, TableHeader, TableRow, TableHead, TableBody, TableCell } from "@/components/ui/table";
-import { Download, History, RotateCcw } from "lucide-react";
+import { Download, History, RotateCcw, FileSpreadsheet } from "lucide-react";
 import { activityLogService, type LogEntry, type EntityType } from "@/lib/activity-log-service";
 import { clientService } from "@/lib/client-service";
 import { workloadService } from "@/lib/workload-service";
@@ -30,9 +30,14 @@ export default function ActivityLogs() {
     setLogs(activityLogService.getAll());
   }, []);
 
-  const handleExport = () => {
+  const handleExportCSV = () => {
     activityLogService.exportCSV();
-    toast.success("Activity logs exported");
+    toast.success("Activity logs exported to CSV");
+  };
+
+  const handleExportXLS = () => {
+    activityLogService.exportXLS();
+    toast.success("Activity logs exported to XLS");
   };
 
   const handleRestore = (log: LogEntry) => {
@@ -41,20 +46,10 @@ export default function ActivityLogs() {
       return;
     }
 
-    // Determine restore strategy based on action type
-    // If 'create' -> delete the entity (if exists)
-    // If 'update' -> update entity with previousData
-    // If 'delete' -> re-create entity with previousData
-    
-    // NOTE: This logic is simplified and assumes in-memory restore for prototype.
-    // In production, this would be a backend transaction.
-    
     try {
       if (log.entityType === "client") {
         restoreEntity(log, clientService);
       } else if (log.entityType === "team_member") {
-        // Workload service has specific methods for restore, but here we can try generic logic if interfaces matched.
-        // Since workloadService doesn't have generic CRUD, we handle manually.
         const members = workloadService.getMembers();
         if (log.action === "update" && log.previousData) {
            const idx = members.findIndex(m => m.id === log.entityId);
@@ -74,9 +69,7 @@ export default function ActivityLogs() {
         }
       }
       
-      // Refresh logs (a real restore would also generate a new log, but let's just refresh)
       toast.success("State restored successfully");
-      // Force reload to reflect changes
       setTimeout(() => window.location.reload(), 500);
     } catch (e) {
       toast.error("Failed to restore state");
@@ -105,9 +98,14 @@ export default function ActivityLogs() {
           <h1 className="text-2xl font-bold tracking-tight">Audit Trail & Recovery</h1>
           <p className="text-muted-foreground">Track all system changes and restore previous states.</p>
         </div>
-        <Button variant="outline" onClick={handleExport}>
-          <Download className="w-4 h-4 mr-2" /> Export CSV
-        </Button>
+        <div className="flex gap-2">
+          <Button variant="outline" size="sm" onClick={handleExportCSV}>
+            <Download className="w-4 h-4 mr-2" /> CSV
+          </Button>
+          <Button variant="outline" size="sm" onClick={handleExportXLS}>
+            <FileSpreadsheet className="w-4 h-4 mr-2 text-emerald-600" /> Excel (XLS)
+          </Button>
+        </div>
       </div>
 
       <Card>

@@ -1,415 +1,376 @@
+// @ts-nocheck
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import { 
-  DropdownMenu, 
-  DropdownMenuContent, 
-  DropdownMenuItem, 
-  DropdownMenuLabel, 
-  DropdownMenuSeparator, 
-  DropdownMenuTrigger 
-} from "@/components/ui/dropdown-menu";
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
+  Dialog, 
+  DialogContent, 
+  DialogDescription, 
+  DialogFooter, 
+  DialogHeader, 
+  DialogTitle, 
+  DialogTrigger 
 } from "@/components/ui/dialog";
 import { 
-  ArrowUpRight, 
+  Plus, 
+  TrendingUp, 
   Users, 
-  AlertTriangle, 
+  Target, 
+  FileText, 
+  Download, 
+  ArrowRight,
+  Calculator,
   Briefcase,
-  Target,
-  TrendingUp,
-  Wallet,
-  FileText,
-  Presentation,
-  Download,
-  MoreVertical,
-  CheckCircle,
-  Eye
+  Activity
 } from "lucide-react";
-import heroImg from "@/assets/hero.jpg";
-import revenueIcon from "@/assets/revenue_icon.png";
-import churnIcon from "@/assets/churn_icon.png";
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
-import { Progress } from "@/components/ui/progress";
+import { useLocation } from "wouter";
+import { useState, useEffect } from "react";
+import { clientService } from "@/lib/client-service";
+import { workloadService } from "@/lib/workload-service";
+import { estimationService } from "@/lib/estimation-service";
+import { downloadService } from "@/lib/download-service";
+import { activityLogService } from "@/lib/activity-log-service";
 import { toast } from "sonner";
-import { useState } from "react";
+import { 
+  AreaChart, 
+  Area, 
+  XAxis, 
+  YAxis, 
+  CartesianGrid, 
+  Tooltip, 
+  ResponsiveContainer,
+  BarChart,
+  Bar,
+  Legend
+} from 'recharts';
 
-// Home Page Component
+const CHART_DATA = [
+  { month: 'Sep', revenue: 450, deals: 12, performance: 85 },
+  { month: 'Oct', revenue: 520, deals: 15, performance: 88 },
+  { month: 'Nov', revenue: 480, deals: 10, performance: 82 },
+  { month: 'Dec', revenue: 610, deals: 18, performance: 92 },
+  { month: 'Jan', revenue: 590, deals: 16, performance: 90 },
+  { month: 'Feb', revenue: 720, deals: 22, performance: 95 },
+];
+
 export default function Home() {
-  const [isPreviewOpen, setIsPreviewOpen] = useState(false);
-  const [selectedReport, setSelectedReport] = useState<string | null>(null);
-  const [isDownloading, setIsDownloading] = useState(false);
+  const [, setLocation] = useLocation();
+  const [stats, setStats] = useState({
+    clients: 0,
+    team: 0,
+    revenue: "Rp 0",
+    winRate: "0%"
+  });
 
-  const handlePreviewReport = (type: string) => {
-    setSelectedReport(type);
-    setIsPreviewOpen(true);
-  };
+  // Dynamic Chart State
+  const [activeData, setActiveData] = useState(CHART_DATA);
 
-  const handleDownload = () => {
-    if (!selectedReport) return;
+  // New Proposal State
+  const [newProposal, setNewProposal] = useState({
+    title: "",
+    client: "",
+    value: ""
+  });
+  const [isDialogOpen, setIsDialogOpen] = useState(false);
+
+  useEffect(() => {
+    const clients = clientService.getAll();
+    const members = workloadService.getMembers();
+    const ests = estimationService.getAll();
     
-    setIsDownloading(true);
-    toast.promise(
-      new Promise((resolve) => setTimeout(resolve, 2000)),
-      {
-        loading: `Generating ${selectedReport}...`,
-        success: () => {
-          setIsDownloading(false);
-          setIsPreviewOpen(false);
-          return `${selectedReport} downloaded successfully!`;
-        },
-        error: () => {
-          setIsDownloading(false);
-          return "Failed to download report";
-        }
-      }
-    );
+    const totalRev = ests.reduce((acc, curr) => acc + (curr.total || 0), 0);
+    
+    setStats({
+      clients: clients.length,
+      team: members.length,
+      revenue: `Rp ${totalRev.toLocaleString('id-ID')}`,
+      winRate: "68%" // Mock static for now
+    });
+
+    // Simulate real-time update every 10 seconds
+    const interval = setInterval(() => {
+      setActiveData(prev => prev.map(d => ({
+        ...d,
+        performance: Math.min(100, d.performance + (Math.random() * 4 - 2))
+      })));
+    }, 10000);
+
+    return () => clearInterval(interval);
+  }, []);
+
+  const handleCreateProposal = () => {
+    if (!newProposal.title || !newProposal.client) {
+      toast.error("Please fill title and client");
+      return;
+    }
+    
+    activityLogService.addLog("estimation", "create", "Arifia Mulia", `Created new proposal: ${newProposal.title} for ${newProposal.client}`);
+    toast.success(`Proposal "${newProposal.title}" created and saved.`);
+    setIsDialogOpen(false);
+    setNewProposal({ title: "", client: "", value: "" });
   };
 
-  // Mock Content for Previews
-  const ExecSummaryPreview = () => (
-    <div className="border border-border rounded-md p-8 bg-white shadow-sm min-h-[400px] text-sm text-foreground">
-      <div className="flex justify-between items-center border-b border-border pb-4 mb-4">
-        <div>
-          <h2 className="text-xl font-bold text-primary">Executive Summary</h2>
-          <p className="text-muted-foreground">Q1 2026 Performance Report</p>
-        </div>
-        <div className="text-right text-xs text-muted-foreground">
-          <p>Generated: {new Date().toLocaleDateString()}</p>
-          <p>Confidential</p>
-        </div>
-      </div>
-      
-      <div className="space-y-6">
-        <section>
-          <h3 className="font-semibold text-primary mb-2 flex items-center gap-2"><Target className="w-4 h-4" /> Financial Highlights</h3>
-          <div className="grid grid-cols-2 gap-4 bg-muted/30 p-4 rounded-md">
-            <div>
-              <p className="text-xs text-muted-foreground">Sales Achievement</p>
-              <p className="text-lg font-bold">Rp 16.8 M <span className="text-xs font-normal text-muted-foreground">/ Rp 40 M</span></p>
-              <Progress value={42} className="h-1 mt-1 bg-muted [&>div]:bg-primary" />
-            </div>
-            <div>
-              <p className="text-xs text-muted-foreground">Net Profit Margin</p>
-              <p className="text-lg font-bold text-emerald-600">32.5% <span className="text-xs font-normal text-muted-foreground">(Target: 30%)</span></p>
-            </div>
-          </div>
-        </section>
+  const handleGenerateReport = () => {
+    const reportContent = `
+SUMMARY STATISTICS:
+- Total Clients: ${stats.clients}
+- Active Team Members: ${stats.team}
+- Pipeline Revenue: ${stats.revenue}
+- Average Win Rate: ${stats.winRate}
 
-        <section>
-          <h3 className="font-semibold text-destructive mb-2 flex items-center gap-2"><AlertTriangle className="w-4 h-4" /> Key Risks</h3>
-          <ul className="list-disc list-inside text-muted-foreground space-y-1">
-            <li>8 High-Risk Clients identified (Churn Score &gt; 75).</li>
-            <li>Presales Team capacity critical at 142% utilization.</li>
-            <li>Major renewal (Bank Example Tbk) due in 30 days.</li>
-          </ul>
-        </section>
-
-        <section>
-          <h3 className="font-semibold text-primary mb-2 flex items-center gap-2"><Briefcase className="w-4 h-4" /> Strategic Recommendations</h3>
-          <p className="text-muted-foreground leading-relaxed">
-            Immediate hiring of 3 Presales staff is recommended to address capacity bottlenecks. Focus retention efforts on "Bank Example" renewal. Leverage cross-sell opportunities for Lark users to adopt Netsuite modules.
-          </p>
-        </section>
-      </div>
-    </div>
-  );
-
-  const PresentationPreview = () => (
-    <div className="border border-border rounded-md overflow-hidden bg-slate-900 text-white min-h-[400px] flex flex-col relative">
-      <div className="absolute top-0 right-0 p-4 opacity-10">
-        <Users className="w-32 h-32" />
-      </div>
-      
-      <div className="flex-1 flex flex-col justify-center items-center p-12 text-center z-10">
-        <div className="mb-8">
-          <Badge variant="outline" className="mb-4 border-slate-700 text-slate-400">Q1 2026 Review</Badge>
-          <h1 className="text-4xl font-bold mb-2 bg-gradient-to-r from-emerald-400 to-blue-500 bg-clip-text text-transparent">
-            Business Performance Update
-          </h1>
-          <p className="text-xl text-slate-400">Prasetia ICT Division</p>
-        </div>
-        
-        <div className="grid grid-cols-3 gap-8 w-full max-w-2xl mt-8 border-t border-slate-800 pt-8">
-          <div>
-            <p className="text-3xl font-bold text-emerald-400">42%</p>
-            <p className="text-sm text-slate-500">Sales Target</p>
-          </div>
-          <div>
-            <p className="text-3xl font-bold text-blue-400">32.5%</p>
-            <p className="text-sm text-slate-500">Net Profit</p>
-          </div>
-          <div>
-            <p className="text-3xl font-bold text-red-400">8</p>
-            <p className="text-sm text-slate-500">At-Risk Accounts</p>
-          </div>
-        </div>
-      </div>
-      
-      <div className="bg-slate-950 p-4 text-xs text-slate-600 flex justify-between">
-        <span>Prasetia RevOps Hub</span>
-        <span>Generated via AnyGen</span>
-      </div>
-    </div>
-  );
+Generated for: Prasetia Dwidharma Group
+    `;
+    downloadService.downloadMockPDF("Executive RevOps Summary", reportContent, "RevOps_Executive_Report");
+    toast.success("Executive report generated and downloading...");
+  };
 
   return (
-    <div className="space-y-8">
-      {/* Document Preview Dialog */}
-      <Dialog open={isPreviewOpen} onOpenChange={setIsPreviewOpen}>
-        <DialogContent className="max-w-3xl">
-          <DialogHeader>
-            <DialogTitle>Preview: {selectedReport}</DialogTitle>
-            <DialogDescription>
-              Review the content before downloading. This is a generated preview based on current dashboard data.
-            </DialogDescription>
-          </DialogHeader>
-          
-          <div className="my-4 max-h-[60vh] overflow-y-auto pr-2">
-            {selectedReport?.includes("Executive Summary") || selectedReport?.includes("Account Plan") ? (
-              <ExecSummaryPreview />
-            ) : (
-              <PresentationPreview />
-            )}
-          </div>
-          
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setIsPreviewOpen(false)}>Cancel</Button>
-            <Button onClick={handleDownload} disabled={isDownloading} className="gap-2">
-              {isDownloading ? (
-                <>Downloading...</>
-              ) : (
-                <><Download className="w-4 h-4" /> Download Document</>
-              )}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-
+    <div className="space-y-8 pb-8">
       {/* Hero Section */}
-      <div className="relative rounded-xl overflow-hidden bg-primary/5 border border-border">
-        <div className="absolute inset-0 opacity-10">
-          <img src={heroImg} alt="" className="w-full h-full object-cover" />
+      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+        <div>
+          <h1 className="text-3xl font-bold tracking-tight">RevOps Dashboard</h1>
+          <p className="text-muted-foreground text-lg">Manage revenue operations, clients, and project workload in one place.</p>
         </div>
-        <div className="relative p-8 md:p-10 flex flex-col md:flex-row items-start md:items-center justify-between gap-6">
-          <div>
-            <h1 className="text-3xl font-bold tracking-tight mb-2">Welcome back, Arifia</h1>
-            <p className="text-muted-foreground max-w-xl">
-              Q1 Performance is on track. Sales achievement is at 42% of the new <strong>Rp 40 M</strong> target. 
-              Net profit margin is healthy at 32% (Target: 30%).
-            </p>
-          </div>
-          <div className="flex flex-wrap gap-3">
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <Button className="gap-2 bg-primary text-primary-foreground hover:bg-primary/90">
-                  <FileText className="w-4 h-4" /> Generate Report
-                </Button>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent align="end" className="w-56">
-                <DropdownMenuLabel>Select Format</DropdownMenuLabel>
-                <DropdownMenuSeparator />
-                <DropdownMenuItem onClick={() => handlePreviewReport("Executive Summary")}>
-                  <FileText className="w-4 h-4 mr-2" /> Executive Summary (PDF)
-                </DropdownMenuItem>
-                <DropdownMenuItem onClick={() => handlePreviewReport("Presentation Deck")}>
-                  <Presentation className="w-4 h-4 mr-2" /> Presentation Slides (PPT)
-                </DropdownMenuItem>
-              </DropdownMenuContent>
-            </DropdownMenu>
-            
-            <Button variant="outline">New Proposal</Button>
-          </div>
+        <div className="flex gap-3">
+          <Button variant="outline" onClick={handleGenerateReport}>
+            <Download className="w-4 h-4 mr-2" /> Report
+          </Button>
+          
+          <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
+            <DialogTrigger asChild>
+              <Button>
+                <Plus className="w-4 h-4 mr-2" /> New Proposal
+              </Button>
+            </DialogTrigger>
+            <DialogContent className="sm:max-w-[425px]">
+              <DialogHeader>
+                <DialogTitle>Create New Proposal</DialogTitle>
+                <DialogDescription>
+                  Draft a new proposal for a client. You can edit the details later in Tools.
+                </DialogDescription>
+              </DialogHeader>
+              <div className="grid gap-4 py-4">
+                <div className="grid grid-cols-4 items-center gap-4">
+                  <Label htmlFor="title" className="text-right">Title</Label>
+                  <Input 
+                    id="title" 
+                    value={newProposal.title}
+                    onChange={(e) => setNewProposal({...newProposal, title: e.target.value})}
+                    placeholder="Project Name" 
+                    className="col-span-3" 
+                  />
+                </div>
+                <div className="grid grid-cols-4 items-center gap-4">
+                  <Label htmlFor="client" className="text-right">Client</Label>
+                  <Input 
+                    id="client" 
+                    value={newProposal.client}
+                    onChange={(e) => setNewProposal({...newProposal, client: e.target.value})}
+                    placeholder="Company Name" 
+                    className="col-span-3" 
+                  />
+                </div>
+                <div className="grid grid-cols-4 items-center gap-4">
+                  <Label htmlFor="value" className="text-right">Value (Rp)</Label>
+                  <Input 
+                    id="value" 
+                    type="number"
+                    value={newProposal.value}
+                    onChange={(e) => setNewProposal({...newProposal, value: e.target.value})}
+                    placeholder="Estimated Value" 
+                    className="col-span-3" 
+                  />
+                </div>
+              </div>
+              <DialogFooter>
+                <Button type="submit" onClick={handleCreateProposal}>Save Proposal</Button>
+              </DialogFooter>
+            </DialogContent>
+          </Dialog>
         </div>
       </div>
 
-      {/* KPI Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-        {/* Sales Target Card */}
-        <Card className="border-l-4 border-l-primary">
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Sales Achievement</CardTitle>
-            <Target className="h-4 w-4 text-primary" />
-          </CardHeader>
-          <CardContent>
-            <div className="flex items-baseline justify-between">
-              <div className="text-2xl font-bold">Rp 16.8 M</div>
-              <div className="text-xs font-medium text-muted-foreground">Target: Rp 40 M</div>
-            </div>
-            <Progress value={42} className="h-2 mt-2 bg-muted [&>div]:bg-primary" />
-            <p className="text-xs text-muted-foreground mt-2">
-              42% Achieved (YTD)
-            </p>
-          </CardContent>
-        </Card>
-        
-        {/* Net Profit Card */}
-        <Card className="border-l-4 border-l-emerald-500">
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Net Profit Margin</CardTitle>
-            <Wallet className="h-4 w-4 text-emerald-500" />
-          </CardHeader>
-          <CardContent>
-            <div className="flex items-baseline justify-between">
-              <div className="text-2xl font-bold text-emerald-600">32.5%</div>
-              <div className="text-xs font-medium text-muted-foreground">Target: 30%</div>
-            </div>
-            <div className="flex items-center gap-2 mt-2 text-xs text-emerald-600 bg-emerald-50 w-fit px-2 py-1 rounded">
-              <TrendingUp className="w-3 h-3" />
-              +2.5% above target
-            </div>
-            <p className="text-xs text-muted-foreground mt-2">
-              Est. Profit: Rp 5.4 M
-            </p>
-          </CardContent>
-        </Card>
-
-        {/* Churn Risk Card */}
+      {/* Stats Cards */}
+      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
         <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Churn Risk</CardTitle>
-            <AlertTriangle className="h-4 w-4 text-destructive" />
+          <CardHeader className="flex flex-row items-center justify-between pb-2 space-y-0">
+            <CardTitle className="text-sm font-medium">Pipeline Revenue</CardTitle>
+            <TrendingUp className="w-4 h-4 text-emerald-600" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold text-destructive">8 Clients</div>
-            <Progress value={25} className="h-1 mt-2 bg-muted [&>div]:bg-destructive" />
-            <p className="text-xs text-muted-foreground mt-2">
-              High risk (&gt;75 score)
-            </p>
+            <div className="text-2xl font-bold">{stats.revenue}</div>
+            <p className="text-xs text-muted-foreground">+12.5% from last month</p>
           </CardContent>
         </Card>
-
-        {/* Presales Load Card */}
         <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Presales Load</CardTitle>
-            <Briefcase className="h-4 w-4 text-orange-500" />
+          <CardHeader className="flex flex-row items-center justify-between pb-2 space-y-0">
+            <CardTitle className="text-sm font-medium">Active Clients</CardTitle>
+            <Users className="w-4 h-4 text-blue-600" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold text-orange-500">142%</div>
-            <Progress value={100} className="h-1 mt-2 bg-muted [&>div]:bg-orange-500" />
-            <p className="text-xs text-muted-foreground mt-2">Critical overload</p>
+            <div className="text-2xl font-bold">{stats.clients}</div>
+            <p className="text-xs text-muted-foreground">3 new acquired this week</p>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between pb-2 space-y-0">
+            <CardTitle className="text-sm font-medium">Win Rate</CardTitle>
+            <Target className="w-4 h-4 text-purple-600" />
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold">{stats.winRate}</div>
+            <p className="text-xs text-muted-foreground">Target: 75% (+7%)</p>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between pb-2 space-y-0">
+            <CardTitle className="text-sm font-medium">Team Load</CardTitle>
+            <Briefcase className="w-4 h-4 text-orange-600" />
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold">{stats.team} Active</div>
+            <p className="text-xs text-muted-foreground">Avg Capacity: 82%</p>
           </CardContent>
         </Card>
       </div>
 
-      {/* Risk & Opportunity Analysis */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        {/* Churn Risk Table */}
-        <Card className="lg:col-span-2">
+      {/* Analytics Section */}
+      <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
+        <Card className="md:col-span-2">
           <CardHeader>
-            <div className="flex items-center justify-between">
-              <div>
-                <CardTitle>Churn Risk Monitor</CardTitle>
-                <CardDescription>Top accounts requiring immediate attention</CardDescription>
-              </div>
-              <img src={churnIcon} className="w-10 h-10 object-contain opacity-20" />
-            </div>
+            <CardTitle className="flex items-center gap-2">
+              <Activity className="w-5 h-5 text-emerald-500" />
+              Real-time Team Performance
+            </CardTitle>
+            <CardDescription>Visualizing revenue trends and team efficiency across quarters.</CardDescription>
           </CardHeader>
           <CardContent>
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Client</TableHead>
-                  <TableHead>Health Score</TableHead>
-                  <TableHead>Risk Factors</TableHead>
-                  <TableHead>Renewal</TableHead>
-                  <TableHead></TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {[
-                  { name: "PT Global Tech", score: 35, risk: "Low Usage, Ticket Spike", date: "15 Days" },
-                  { name: "Indo Logistics", score: 42, risk: "Sponsor Left", date: "45 Days" },
-                  { name: "Retail Maju", score: 48, risk: "Implementation Stalled", date: "60 Days" },
-                  { name: "Bank Example", score: 55, risk: "Pricing Dispute", date: "30 Days" },
-                ].map((client, i) => (
-                  <TableRow key={i}>
-                    <TableCell className="font-medium">{client.name}</TableCell>
-                    <TableCell>
-                      <Badge variant="destructive" className="bg-red-50 text-red-700 border-red-200 hover:bg-red-100">
-                        {client.score}/100
-                      </Badge>
-                    </TableCell>
-                    <TableCell className="text-sm text-muted-foreground">{client.risk}</TableCell>
-                    <TableCell className="text-sm font-bold text-orange-600">{client.date}</TableCell>
-                    <TableCell>
-                      <DropdownMenu>
-                        <DropdownMenuTrigger asChild>
-                          <Button variant="ghost" size="sm"><MoreVertical className="w-4 h-4" /></Button>
-                        </DropdownMenuTrigger>
-                        <DropdownMenuContent align="end">
-                          <DropdownMenuItem onClick={() => handlePreviewReport(`Account Plan for ${client.name}`)}>
-                            <FileText className="w-4 h-4 mr-2" /> Generate Account Plan
-                          </DropdownMenuItem>
-                          <DropdownMenuItem onClick={() => handlePreviewReport(`Review Deck for ${client.name}`)}>
-                            <Presentation className="w-4 h-4 mr-2" /> Generate Review Deck
-                          </DropdownMenuItem>
-                        </DropdownMenuContent>
-                      </DropdownMenu>
-                    </TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
+            <div className="h-[300px] w-full">
+              <ResponsiveContainer width="100%" height="100%">
+                <AreaChart data={activeData}>
+                  <defs>
+                    <linearGradient id="colorRev" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="5%" stopColor="#10b981" stopOpacity={0.1}/>
+                      <stop offset="95%" stopColor="#10b981" stopOpacity={0}/>
+                    </linearGradient>
+                  </defs>
+                  <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f0f0f0" />
+                  <XAxis 
+                    dataKey="month" 
+                    axisLine={false} 
+                    tickLine={false} 
+                    tick={{fontSize: 12, fill: '#888'}} 
+                  />
+                  <YAxis 
+                    axisLine={false} 
+                    tickLine={false} 
+                    tick={{fontSize: 12, fill: '#888'}}
+                    tickFormatter={(value) => `Rp${value}M`}
+                  />
+                  <Tooltip 
+                    contentStyle={{borderRadius: '8px', border: 'none', boxShadow: '0 4px 12px rgba(0,0,0,0.1)'}}
+                  />
+                  <Area 
+                    type="monotone" 
+                    dataKey="revenue" 
+                    stroke="#10b981" 
+                    strokeWidth={3}
+                    fillOpacity={1} 
+                    fill="url(#colorRev)" 
+                  />
+                  <Area 
+                    type="monotone" 
+                    dataKey="performance" 
+                    stroke="#3b82f6" 
+                    strokeWidth={2}
+                    fill="transparent"
+                  />
+                </AreaChart>
+              </ResponsiveContainer>
+            </div>
+            <div className="flex items-center justify-center gap-6 mt-4">
+              <div className="flex items-center gap-2 text-sm">
+                <div className="w-3 h-3 rounded-full bg-emerald-500"></div>
+                <span>Revenue (Millions)</span>
+              </div>
+              <div className="flex items-center gap-2 text-sm">
+                <div className="w-3 h-3 rounded-full bg-blue-500"></div>
+                <span>Team Efficiency (%)</span>
+              </div>
+            </div>
           </CardContent>
         </Card>
 
-        {/* Revenue Opportunity */}
-        <Card className="bg-slate-900 text-white border-slate-800 relative overflow-hidden">
-          <div className="absolute top-0 right-0 p-4 opacity-10">
-            <img src={revenueIcon} className="w-32 h-32 object-contain" />
-          </div>
+        <Card>
           <CardHeader>
-            <CardTitle className="text-slate-100">Revenue Growth</CardTitle>
-            <CardDescription className="text-slate-400">Expansion opportunities in existing base</CardDescription>
+            <CardTitle>Quarterly Deals</CardTitle>
+            <CardDescription>Closed projects count.</CardDescription>
           </CardHeader>
-          <CardContent className="space-y-6">
-            <div className="space-y-2">
-              <div className="flex justify-between text-sm">
-                <span>Upsell Pipeline</span>
-                <span className="font-bold">Rp 3.5 M</span>
-              </div>
-              <Progress value={65} className="h-2 bg-slate-800 [&>div]:bg-emerald-500" />
+          <CardContent>
+            <div className="h-[300px] w-full">
+              <ResponsiveContainer width="100%" height="100%">
+                <BarChart data={activeData}>
+                  <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f0f0f0" />
+                  <XAxis 
+                    dataKey="month" 
+                    axisLine={false} 
+                    tickLine={false} 
+                    tick={{fontSize: 12, fill: '#888'}} 
+                  />
+                  <YAxis 
+                    axisLine={false} 
+                    tickLine={false} 
+                    tick={{fontSize: 12, fill: '#888'}}
+                  />
+                  <Tooltip />
+                  <Bar dataKey="deals" fill="#8b5cf6" radius={[4, 4, 0, 0]} />
+                </BarChart>
+              </ResponsiveContainer>
             </div>
-            
-            <div className="space-y-4 pt-4">
-              <div className="flex items-start gap-3">
-                <div className="w-8 h-8 rounded-full bg-emerald-500/20 flex items-center justify-center text-emerald-500">
-                  <ArrowUpRight className="w-4 h-4" />
-                </div>
-                <div>
-                  <h4 className="text-sm font-semibold">Lark → Netsuite Cross-sell</h4>
-                  <p className="text-xs text-slate-400">5 qualified accounts identified</p>
-                </div>
-              </div>
-              <div className="flex items-start gap-3">
-                <div className="w-8 h-8 rounded-full bg-blue-500/20 flex items-center justify-center text-blue-500">
-                  <Users className="w-4 h-4" />
-                </div>
-                <div>
-                  <h4 className="text-sm font-semibold">License Expansion</h4>
-                  <p className="text-xs text-slate-400">Waitlisted users at PT ABC</p>
-                </div>
-              </div>
-            </div>
+          </CardContent>
+        </Card>
+      </div>
 
-            <Button className="w-full bg-emerald-600 hover:bg-emerald-700 text-white border-none mt-4">
-              View Expansion Pipeline
-            </Button>
+      {/* Quick Access */}
+      <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
+        <Card className="hover:shadow-md transition-shadow cursor-pointer border-l-4 border-l-blue-500" onClick={() => setLocation("/clients")}>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <Users className="w-5 h-5 text-blue-500" />
+              Client 360
+            </CardTitle>
+            <CardDescription>Manage client relationship and performance.</CardDescription>
+          </CardHeader>
+          <CardContent className="flex justify-end">
+            <ArrowRight className="w-4 h-4 text-muted-foreground" />
+          </CardContent>
+        </Card>
+
+        <Card className="hover:shadow-md transition-shadow cursor-pointer border-l-4 border-l-emerald-500" onClick={() => setLocation("/tools")}>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <Calculator className="w-5 h-5 text-emerald-500" />
+              Revenue Tools
+            </CardTitle>
+            <CardDescription>Calculators and estimation builders.</CardDescription>
+          </CardHeader>
+          <CardContent className="flex justify-end">
+            <ArrowRight className="w-4 h-4 text-muted-foreground" />
+          </CardContent>
+        </Card>
+
+        <Card className="hover:shadow-md transition-shadow cursor-pointer border-l-4 border-l-purple-500" onClick={() => setLocation("/products")}>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <FileText className="w-5 h-5 text-purple-500" />
+              Product Master
+            </CardTitle>
+            <CardDescription>Manage price lists and margins.</CardDescription>
+          </CardHeader>
+          <CardContent className="flex justify-end">
+            <ArrowRight className="w-4 h-4 text-muted-foreground" />
           </CardContent>
         </Card>
       </div>

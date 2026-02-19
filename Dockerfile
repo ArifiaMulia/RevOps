@@ -31,12 +31,11 @@ COPY --from=backend-builder /app/server/dist ./dist
 COPY --from=frontend-builder /app/frontend/dist ./public
 
 # Expose port
-# Expose port
-EXPOSE 3001
+EXPOSE 3000
 
 # Healthcheck to ensure API is responsive
 HEALTHCHECK --interval=30s --timeout=3s \
-  CMD wget -q --spider http://localhost:3001/api/health || exit 1
+  CMD curl -f http://localhost:3000/api/health || exit 1
 
 # Start server
 CMD ["node", "dist/index.js"]

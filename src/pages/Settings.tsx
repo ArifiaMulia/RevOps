@@ -1,204 +1,249 @@
 // @ts-nocheck
-import { Card, CardHeader, CardTitle, CardContent, CardDescription } from "@/components/ui/card";
+import { Card, CardHeader, CardTitle, CardDescription, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
+import { Table, TableHeader, TableRow, TableHead, TableBody, TableCell } from "@/components/ui/table";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Separator } from "@/components/ui/separator";
-import { useForm } from "react-hook-form";
-import { toast } from "sonner";
-import { useEffect } from "react";
-import { getLarkConfig, saveLarkConfig, type LarkConfig } from "@/lib/lark-connector";
-import { Save, Database, ShieldCheck, Key, Lock } from "lucide-react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { useAuth, PERMISSIONS } from "@/contexts/AuthContext";
-import { useLocation } from "wouter";
+import { 
+  ShieldCheck, 
+  Users, 
+  Settings as SettingsIcon, 
+  Lock, 
+  Edit2, 
+  Trash2,
+  Check,
+  X
+} from "lucide-react";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import { useState } from "react";
+import { useAuth } from "@/contexts/AuthContext";
+import { toast } from "sonner";
+
+interface UserRecord {
+  id: string;
+  name: string;
+  email: string;
+  role: 'admin' | 'manager' | 'viewer';
+  lastActive: string;
+}
+
+const INITIAL_USERS: UserRecord[] = [
+  { id: "1", name: "Arifia Mulia", email: "arifia.mulia@prasetia.co.id", role: "admin", lastActive: "Just now" },
+  { id: "2", name: "Dedi Setiawan", email: "dedi.s@prasetia.co.id", role: "manager", lastActive: "2 hours ago" },
+  { id: "3", name: "Budi Santoso", email: "budi.s@prasetia.co.id", role: "viewer", lastActive: "Yesterday" },
+];
+
+const MODULE_PERMISSIONS = [
+  { module: "Dashboard", admin: "Full Access", manager: "Full Access", viewer: "View Only" },
+  { module: "Client 360", admin: "Full Access", manager: "Edit", viewer: "View Only" },
+  { module: "Products", admin: "Full Access", manager: "Edit", viewer: "View Only" },
+  { module: "Tools", admin: "Full Access", manager: "Full Access", viewer: "View Only" },
+  { module: "Workload", admin: "Full Access", manager: "View Only", viewer: "None" },
+  { module: "Settings", admin: "Full Access", manager: "None", viewer: "None" },
+];
 
 export default function Settings() {
-  const { register, handleSubmit, setValue } = useForm<LarkConfig>();
-  const { hasPermission } = useAuth();
-  const [, setLocation] = useLocation();
+  const { user } = useAuth();
+  const [users, setUsers] = useState<UserRecord[]>(INITIAL_USERS);
+  const [isUserDialogOpen, setIsUserDialogOpen] = useState(false);
+  const [editingUser, setEditingUser] = useState<Partial<UserRecord> | null>(null);
 
-  // Redirect if no permission
-  useEffect(() => {
-    if (!hasPermission("SETTINGS", "view")) {
-      toast.error("Access Denied: You do not have permission to view Settings.");
-      setLocation("/");
+  const handleSaveUser = () => {
+    if (editingUser?.id) {
+      setUsers(users.map(u => u.id === editingUser.id ? { ...u, ...editingUser } as UserRecord : u));
+      toast.success("User updated");
+    } else {
+      const newUser = {
+        ...editingUser,
+        id: Math.random().toString(36).substr(2, 9),
+        lastActive: "Never"
+      } as UserRecord;
+      setUsers([...users, newUser]);
+      toast.success("User added successfully");
     }
-  }, [hasPermission, setLocation]);
-
-  useEffect(() => {
-    const config = getLarkConfig();
-    if (config) {
-      setValue("appId", config.appId);
-      setValue("appSecret", config.appSecret);
-      setValue("baseToken", config.baseToken);
-      setValue("tableId", config.tableId);
-    }
-  }, [setValue]);
-
-  const onSubmit = (data: LarkConfig) => {
-    if (!hasPermission("SETTINGS", "manage")) {
-      toast.error("Permission Denied: Only administrators can modify settings.");
-      return;
-    }
-    saveLarkConfig(data);
-    toast.success("Configuration saved successfully!");
+    setIsUserDialogOpen(false);
   };
-
-  const handleSAMLSave = () => {
-    if (!hasPermission("SETTINGS", "manage")) {
-      toast.error("Permission Denied: Only administrators can modify settings.");
-      return;
-    }
-    toast.success("SAML settings saved");
-  };
-
-  if (!hasPermission("SETTINGS", "view")) return null;
 
   return (
-    <div className="max-w-3xl mx-auto space-y-8">
+    <div className="space-y-6">
       <div>
         <h1 className="text-2xl font-bold tracking-tight">System Settings</h1>
-        <p className="text-muted-foreground">Manage external integrations and security policies.</p>
+        <p className="text-muted-foreground">Manage user permissions, security, and application preferences.</p>
       </div>
 
-      {/* Read-only warning for non-managers */}
-      {!hasPermission("SETTINGS", "manage") && (
-        <div className="bg-yellow-50 border border-yellow-200 text-yellow-800 p-4 rounded-md flex items-center gap-3">
-          <Lock className="w-5 h-5" />
-          <div>
-            <p className="font-semibold text-sm">Read-Only Access</p>
-            <p className="text-xs">You are viewing these settings in read-only mode. Contact an administrator to make changes.</p>
-          </div>
-        </div>
-      )}
-
-      <Tabs defaultValue="lark">
-        <TabsList className="grid w-full grid-cols-2">
-          <TabsTrigger value="lark">Lark Integration</TabsTrigger>
-          <TabsTrigger value="sso">SAML 2.0 SSO</TabsTrigger>
+      <Tabs defaultValue="users" className="space-y-4">
+        <TabsList>
+          <TabsTrigger value="users" className="flex items-center gap-2">
+            <Users className="w-4 h-4" /> User Management
+          </TabsTrigger>
+          <TabsTrigger value="rbac" className="flex items-center gap-2">
+            <ShieldCheck className="w-4 h-4" /> Role Permissions
+          </TabsTrigger>
+          <TabsTrigger value="general" className="flex items-center gap-2">
+            <SettingsIcon className="w-4 h-4" /> Preferences
+          </TabsTrigger>
         </TabsList>
 
-        <TabsContent value="lark">
+        <TabsContent value="users">
           <Card>
-            <CardHeader>
-              <div className="flex items-center gap-2">
-                <Database className="w-5 h-5 text-primary" />
-                <div>
-                  <CardTitle>Lark Base Connector</CardTitle>
-                  <CardDescription>Configure API access to sync data from Lark Base</CardDescription>
-                </div>
+            <CardHeader className="flex flex-row items-center justify-between">
+              <div className="space-y-1">
+                <CardTitle>Platform Users</CardTitle>
+                <CardDescription>Control who has access to the RevOps Hub.</CardDescription>
               </div>
+              <Button size="sm" onClick={() => { setEditingUser({ role: 'viewer' }); setIsUserDialogOpen(true); }}>
+                Add User
+              </Button>
             </CardHeader>
             <CardContent>
-              <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
-                <fieldset disabled={!hasPermission("SETTINGS", "manage")} className="space-y-4">
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    <div className="space-y-2">
-                      <Label>App ID</Label>
-                      <Input {...register("appId")} placeholder="cli_..." />
-                    </div>
-                    <div className="space-y-2">
-                      <Label>App Secret</Label>
-                      <Input {...register("appSecret")} type="password" placeholder="••••••••" />
-                    </div>
-                  </div>
-                  
-                  <Separator />
-                  
-                  <div className="space-y-2">
-                    <Label>Base Token</Label>
-                    <Input {...register("baseToken")} placeholder="Check URL: /base/BASExxxxx" />
-                    <p className="text-xs text-muted-foreground">Found in your Lark Base URL.</p>
-                  </div>
-                  
-                  <div className="space-y-2">
-                    <Label>Table ID</Label>
-                    <Input {...register("tableId")} placeholder="tblxxxxxx" />
-                    <p className="text-xs text-muted-foreground">The specific table ID to fetch records from.</p>
-                  </div>
-
-                  <div className="bg-blue-50 text-blue-700 p-3 rounded-md text-sm flex gap-2">
-                    <ShieldCheck className="w-4 h-4 mt-0.5 shrink-0" />
-                    <p>
-                      Credentials are stored locally in your browser. For production use, configure a secure backend proxy to handle authentication.
-                    </p>
-                  </div>
-
-                  {hasPermission("SETTINGS", "manage") && (
-                    <Button type="submit" className="w-full">
-                      <Save className="w-4 h-4 mr-2" /> Save Configuration
-                    </Button>
-                  )}
-                </fieldset>
-              </form>
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>User</TableHead>
+                    <TableHead>Email</TableHead>
+                    <TableHead>Role</TableHead>
+                    <TableHead>Last Active</TableHead>
+                    <TableHead className="w-[100px]"></TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {users.map((u) => (
+                    <TableRow key={u.id}>
+                      <TableCell className="font-medium">{u.name}</TableCell>
+                      <TableCell className="text-sm">{u.email}</TableCell>
+                      <TableCell>
+                        <Badge variant={u.role === 'admin' ? 'default' : 'secondary'}>
+                          {u.role.toUpperCase()}
+                        </Badge>
+                      </TableCell>
+                      <TableCell className="text-sm text-muted-foreground">{u.lastActive}</TableCell>
+                      <TableCell>
+                        <div className="flex gap-2">
+                          <Button variant="ghost" size="icon" onClick={() => { setEditingUser(u); setIsUserDialogOpen(true); }}>
+                            <Edit2 className="w-4 h-4" />
+                          </Button>
+                          <Button variant="ghost" size="icon" className="text-red-500" onClick={() => setUsers(users.filter(x => x.id !== u.id))}>
+                            <Trash2 className="w-4 h-4" />
+                          </Button>
+                        </div>
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
             </CardContent>
           </Card>
         </TabsContent>
 
-        <TabsContent value="sso">
+        <TabsContent value="rbac">
           <Card>
             <CardHeader>
-              <div className="flex items-center gap-2">
-                <Key className="w-5 h-5 text-primary" />
-                <div>
-                  <CardTitle>SAML 2.0 Configuration</CardTitle>
-                  <CardDescription>Configure Single Sign-On with Identity Providers (Okta, Google, Microsoft)</CardDescription>
-                </div>
-              </div>
+              <CardTitle>Role-Based Access Control (RBAC)</CardTitle>
+              <CardDescription>Definition of access levels across system modules.</CardDescription>
             </CardHeader>
-            <CardContent className="space-y-6">
-              <div className="bg-amber-50 text-amber-800 p-4 rounded-md text-sm border border-amber-200">
-                <strong>Note:</strong> This is a client-side configuration UI. For actual SAML enforcement, you must configure your backend Service Provider (SP) metadata with your Identity Provider (IdP).
+            <CardContent>
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Module</TableHead>
+                    <TableHead>Admin</TableHead>
+                    <TableHead>Manager</TableHead>
+                    <TableHead>Viewer</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {MODULE_PERMISSIONS.map((perm) => (
+                    <TableRow key={perm.module}>
+                      <TableCell className="font-medium">{perm.module}</TableCell>
+                      <TableCell>
+                        <Badge className="bg-emerald-500">{perm.admin}</Badge>
+                      </TableCell>
+                      <TableCell>
+                        <Badge variant="outline" className={perm.manager === 'None' ? 'text-red-500 border-red-200' : 'text-blue-500 border-blue-200'}>
+                          {perm.manager}
+                        </Badge>
+                      </TableCell>
+                      <TableCell>
+                        <Badge variant="outline" className={perm.viewer === 'None' ? 'text-red-500 border-red-200' : 'text-slate-500'}>
+                          {perm.viewer}
+                        </Badge>
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        <TabsContent value="general">
+          <Card>
+            <CardHeader>
+              <CardTitle>System Preferences</CardTitle>
+              <CardDescription>Configure branding and notification defaults.</CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="grid gap-2">
+                <Label>Organization Name</Label>
+                <Input defaultValue="Prasetia Dwidharma Group" />
               </div>
-
-              <fieldset disabled={!hasPermission("SETTINGS", "manage")} className="space-y-4">
-                <div className="space-y-4">
-                  <div className="space-y-2">
-                    <Label>Identity Provider Single Sign-On URL</Label>
-                    <Input placeholder="https://idp.example.com/app/sso/saml" />
-                  </div>
-                  
-                  <div className="space-y-2">
-                    <Label>Identity Provider Issuer (Entity ID)</Label>
-                    <Input placeholder="http://www.okta.com/exk..." />
-                  </div>
-
-                  <div className="space-y-2">
-                    <Label>X.509 Certificate</Label>
-                    <textarea 
-                      className="flex min-h-[80px] w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
-                      placeholder="-----BEGIN CERTIFICATE----- ... -----END CERTIFICATE-----"
-                    />
-                  </div>
-
-                  <Separator />
-
-                  <div className="space-y-2">
-                    <h3 className="font-medium text-sm">Service Provider (SP) Settings</h3>
-                    <div className="grid grid-cols-2 gap-4 text-sm">
-                      <div className="p-3 bg-muted rounded">
-                        <p className="text-xs text-muted-foreground">ACS URL</p>
-                        <p className="font-mono mt-1 break-all">https://revops.prasetia.co.id/api/auth/saml/callback</p>
-                      </div>
-                      <div className="p-3 bg-muted rounded">
-                        <p className="text-xs text-muted-foreground">Entity ID</p>
-                        <p className="font-mono mt-1">prasetia-revops-hub</p>
-                      </div>
-                    </div>
-                  </div>
-
-                  {hasPermission("SETTINGS", "manage") && (
-                    <Button className="w-full" onClick={handleSAMLSave}>
-                      <Save className="w-4 h-4 mr-2" /> Save SAML Settings
-                    </Button>
-                  )}
-                </div>
-              </fieldset>
+              <div className="grid gap-2">
+                <Label>Currency Format</Label>
+                <Badge variant="outline" className="w-fit">IDR (Indonesian Rupiah)</Badge>
+              </div>
+              <div className="grid gap-2">
+                <Label>Default Tax Rate (%)</Label>
+                <Input type="number" defaultValue="11" />
+              </div>
+              <Button className="mt-4">Update Preferences</Button>
             </CardContent>
           </Card>
         </TabsContent>
       </Tabs>
+
+      <Dialog open={isUserDialogOpen} onOpenChange={setIsUserDialogOpen}>
+        <DialogContent className="sm:max-w-[400px]">
+          <DialogHeader>
+            <DialogTitle>{editingUser?.id ? "Edit User Account" : "Add Platform User"}</DialogTitle>
+            <DialogDescription>Assign roles and verify email addresses.</DialogDescription>
+          </DialogHeader>
+          <div className="grid gap-4 py-4">
+            <div className="space-y-2">
+              <Label htmlFor="uname">Full Name</Label>
+              <Input id="uname" value={editingUser?.name || ""} onChange={(e) => setEditingUser({...editingUser, name: e.target.value})} />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="uemail">Email</Label>
+              <Input id="uemail" value={editingUser?.email || ""} onChange={(e) => setEditingUser({...editingUser, email: e.target.value})} />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="urole">System Role</Label>
+              <select 
+                id="urole" 
+                className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+                value={editingUser?.role || "viewer"}
+                onChange={(e) => setEditingUser({...editingUser, role: e.target.value as any})}
+              >
+                <option value="admin">Administrator</option>
+                <option value="manager">Manager</option>
+                <option value="viewer">Viewer</option>
+              </select>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button onClick={handleSaveUser}>Save User</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

@@ -83,8 +83,38 @@ export const activityLogService = {
     document.body.removeChild(link);
   },
 
-  // Restore logic needs to communicate with other services. 
-  // We will implement a registry or generic restore handler in the UI or a higher-level service.
+  exportXLS: () => {
+    const logs = activityLogService.getAll();
+    if (logs.length === 0) {
+      toast.error("No logs to export");
+      return;
+    }
+
+    // Using Tab Separated Values (TSV) which Excel opens natively and identifies correctly with .xls
+    const headers = ["ID", "Timestamp", "User", "Action", "Entity Type", "Entity ID", "Description"];
+    const tsvContent = [
+      headers.join("\t"),
+      ...logs.map(log => [
+        log.id,
+        new Date(log.timestamp).toLocaleString(),
+        log.user,
+        log.action,
+        log.entityType,
+        log.entityId,
+        log.description
+      ].join("\t"))
+    ].join("\n");
+
+    const blob = new Blob([tsvContent], { type: "application/vnd.ms-excel;charset=utf-8;" });
+    const link = document.createElement("a");
+    const url = URL.createObjectURL(blob);
+    link.setAttribute("href", url);
+    link.setAttribute("download", `activity_logs_${new Date().toISOString().split('T')[0]}.xls`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  },
+
   getLogById: (id: string): LogEntry | undefined => {
     return activityLogService.getAll().find(l => l.id === id);
   }
