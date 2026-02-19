@@ -24,6 +24,20 @@ export interface User {
   history?: ProfileHistoryItem[];
 }
 
+// Keep PERMISSIONS export as a reference for components that still import it
+export const PERMISSIONS = {
+  DASHBOARD: { view: ["admin", "user"] },
+  CLIENT_360: { view: ["admin", "user"], edit: ["admin", "user"] },
+  WORKLOAD: { view: ["admin", "user"], edit: ["admin", "user"] },
+  PRODUCT_MASTER: { view: ["admin", "user"], manage: ["admin"] },
+  PRODUCT_DASHBOARD: { view: ["admin", "user"] },
+  CUSTOMER_INFO: { view: ["admin", "user"] },
+  TOOLS: { view: ["admin", "user"] },
+  ACTIVITY_LOGS: { view: ["admin"], manage: ["admin"] },
+  SETTINGS: { view: ["admin"], manage: ["admin"] },
+  PROFILE: { view: ["admin", "user"], edit: ["admin", "user"] },
+} as const;
+
 interface AuthContextType {
   user: User | null;
   isLoading: boolean;
@@ -62,7 +76,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     const role = roles.find(r => r.id === user.role);
     if (!role) return false;
 
-    // Normalizing module names if they differ slightly between PERMISSIONS object and UI labels
+    // Normalize module names to match role permissions map
     const level = role.permissions[moduleName] || 'None';
 
     if (action === "view") {
