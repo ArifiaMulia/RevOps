@@ -24,5 +24,5 @@ echo "🧹 Cleaning up old images..."
 docker image prune -f
 
 echo "✅ Deployment Complete!"
-echo "   App is running at: http://localhost:3999 (or your domain:3999)"
-echo "   Check health: https://revops.virtuenet.space/api/health (Note: You might need to update your Proxy to Port 3999)"
+echo "   App is running via Coolify network"
+echo "   URL: https://revops.virtuenet.space"

@@ -14,7 +14,10 @@ import {
   Edit2, 
   Trash2,
   Check,
-  X
+  X,
+  Plus,
+  UserPlus,
+  Save
 } from "lucide-react";
 import {
   Dialog,
@@ -24,15 +27,22 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { useState } from "react";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import { useState, useEffect } from "react";
 import { useAuth } from "@/contexts/AuthContext";
+import { roleService, type Role, type PermissionLevel } from "@/lib/role-service";
 import { toast } from "sonner";
 
 interface UserRecord {
   id: string;
   name: string;
   email: string;
-  role: 'admin' | 'manager' | 'viewer';
+  role: string;
   lastActive: string;
 }
 
@@ -42,20 +52,30 @@ const INITIAL_USERS: UserRecord[] = [
   { id: "3", name: "Budi Santoso", email: "budi.s@prasetia.co.id", role: "viewer", lastActive: "Yesterday" },
 ];
 
-const MODULE_PERMISSIONS = [
-  { module: "Dashboard", admin: "Full Access", manager: "Full Access", viewer: "View Only" },
-  { module: "Client 360", admin: "Full Access", manager: "Edit", viewer: "View Only" },
-  { module: "Products", admin: "Full Access", manager: "Edit", viewer: "View Only" },
-  { module: "Tools", admin: "Full Access", manager: "Full Access", viewer: "View Only" },
-  { module: "Workload", admin: "Full Access", manager: "View Only", viewer: "None" },
-  { module: "Settings", admin: "Full Access", manager: "None", viewer: "None" },
+const MODULES = [
+  "Dashboard",
+  "Client 360",
+  "Products",
+  "Tools",
+  "Workload",
+  "Settings",
+  "Activity Logs"
 ];
+
+const PERMISSION_LEVELS: PermissionLevel[] = ['Full Access', 'Edit', 'View Only', 'None'];
 
 export default function Settings() {
   const { user } = useAuth();
   const [users, setUsers] = useState<UserRecord[]>(INITIAL_USERS);
+  const [roles, setRoles] = useState<Role[]>([]);
   const [isUserDialogOpen, setIsUserDialogOpen] = useState(false);
+  const [isRoleDialogOpen, setIsRoleDialogOpen] = useState(false);
   const [editingUser, setEditingUser] = useState<Partial<UserRecord> | null>(null);
+  const [newRoleName, setNewRoleName] = useState("");
+
+  useEffect(() => {
+    setRoles(roleService.getAll());
+  }, []);
 
   const handleSaveUser = () => {
     if (editingUser?.id) {
@@ -71,6 +91,38 @@ export default function Settings() {
       toast.success("User added successfully");
     }
     setIsUserDialogOpen(false);
+  };
+
+  const handleAddRole = () => {
+    if (!newRoleName) return;
+    roleService.add(newRoleName);
+    setRoles(roleService.getAll());
+    setNewRoleName("");
+    setIsRoleDialogOpen(false);
+    toast.success(`Role "${newRoleName}" created`);
+  };
+
+  const togglePermission = (roleId: string, module: string) => {
+    const role = roles.find(r => r.id === roleId);
+    if (!role) return;
+    
+    const current = role.permissions[module] || 'None';
+    const currentIndex = PERMISSION_LEVELS.indexOf(current);
+    const nextIndex = (currentIndex + 1) % PERMISSION_LEVELS.length;
+    const next = PERMISSION_LEVELS[nextIndex];
+    
+    roleService.updatePermission(roleId, module, next);
+    setRoles(roleService.getAll());
+  };
+
+  const getBadgeVariant = (level: PermissionLevel) => {
+    switch (level) {
+      case 'Full Access': return 'bg-emerald-500 text-white hover:bg-emerald-600';
+      case 'Edit': return 'bg-blue-100 text-blue-700 border-blue-200 hover:bg-blue-200';
+      case 'View Only': return 'bg-slate-100 text-slate-700 border-slate-200 hover:bg-slate-200';
+      case 'None': return 'bg-red-50 text-red-600 border-red-100 hover:bg-red-100';
+      default: return 'outline';
+    }
   };
 
   return (
@@ -101,7 +153,7 @@ export default function Settings() {
                 <CardDescription>Control who has access to the RevOps Hub.</CardDescription>
               </div>
               <Button size="sm" onClick={() => { setEditingUser({ role: 'viewer' }); setIsUserDialogOpen(true); }}>
-                Add User
+                <UserPlus className="w-4 h-4 mr-2" /> Add User / Admin
               </Button>
             </CardHeader>
             <CardContent>
@@ -121,8 +173,8 @@ export default function Settings() {
                       <TableCell className="font-medium">{u.name}</TableCell>
                       <TableCell className="text-sm">{u.email}</TableCell>
                       <TableCell>
-                        <Badge variant={u.role === 'admin' ? 'default' : 'secondary'}>
-                          {u.role.toUpperCase()}
+                        <Badge variant="outline" className="capitalize">
+                          {u.role}
                         </Badge>
                       </TableCell>
                       <TableCell className="text-sm text-muted-foreground">{u.lastActive}</TableCell>
@@ -146,41 +198,61 @@ export default function Settings() {
 
         <TabsContent value="rbac">
           <Card>
-            <CardHeader>
-              <CardTitle>Role-Based Access Control (RBAC)</CardTitle>
-              <CardDescription>Definition of access levels across system modules.</CardDescription>
+            <CardHeader className="flex flex-row items-center justify-between">
+              <div className="space-y-1">
+                <CardTitle>Role-Based Access Control (RBAC)</CardTitle>
+                <CardDescription>Click badges to toggle permission levels for each role.</CardDescription>
+              </div>
+              <Button variant="outline" size="sm" onClick={() => setIsRoleDialogOpen(true)}>
+                <Plus className="w-4 h-4 mr-2" /> Create New Role
+              </Button>
             </CardHeader>
             <CardContent>
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>Module</TableHead>
-                    <TableHead>Admin</TableHead>
-                    <TableHead>Manager</TableHead>
-                    <TableHead>Viewer</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {MODULE_PERMISSIONS.map((perm) => (
-                    <TableRow key={perm.module}>
-                      <TableCell className="font-medium">{perm.module}</TableCell>
-                      <TableCell>
-                        <Badge className="bg-emerald-500">{perm.admin}</Badge>
-                      </TableCell>
-                      <TableCell>
-                        <Badge variant="outline" className={perm.manager === 'None' ? 'text-red-500 border-red-200' : 'text-blue-500 border-blue-200'}>
-                          {perm.manager}
-                        </Badge>
-                      </TableCell>
-                      <TableCell>
-                        <Badge variant="outline" className={perm.viewer === 'None' ? 'text-red-500 border-red-200' : 'text-slate-500'}>
-                          {perm.viewer}
-                        </Badge>
-                      </TableCell>
+              <div className="overflow-x-auto">
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead className="w-[200px]">Module</TableHead>
+                      {roles.map(role => (
+                        <TableHead key={role.id} className="text-center min-w-[120px]">
+                          <div className="flex flex-col items-center gap-1">
+                            <span className="capitalize">{role.name}</span>
+                            {role.id !== 'admin' && (
+                              <Button variant="ghost" size="icon" className="h-4 w-4 text-red-400 hover:text-red-600" onClick={() => {
+                                roleService.delete(role.id);
+                                setRoles(roleService.getAll());
+                              }}>
+                                <Trash2 className="h-3 w-3" />
+                              </Button>
+                            )}
+                          </div>
+                        </TableHead>
+                      ))}
                     </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
+                  </TableHeader>
+                  <TableBody>
+                    {MODULES.map((module) => (
+                      <TableRow key={module}>
+                        <TableCell className="font-medium">{module}</TableCell>
+                        {roles.map(role => {
+                          const level = role.permissions[module] || 'None';
+                          return (
+                            <TableCell key={`${role.id}-${module}`} className="text-center">
+                              <Badge 
+                                variant="outline" 
+                                className={`cursor-pointer transition-all ${getBadgeVariant(level)}`}
+                                onClick={() => togglePermission(role.id, module)}
+                              >
+                                {level}
+                              </Badge>
+                            </TableCell>
+                          );
+                        })}
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </div>
             </CardContent>
           </Card>
         </TabsContent>
@@ -204,12 +276,15 @@ export default function Settings() {
                 <Label>Default Tax Rate (%)</Label>
                 <Input type="number" defaultValue="11" />
               </div>
-              <Button className="mt-4">Update Preferences</Button>
+              <Button className="mt-4">
+                <Save className="w-4 h-4 mr-2" /> Update Preferences
+              </Button>
             </CardContent>
           </Card>
         </TabsContent>
       </Tabs>
 
+      {/* User Dialog */}
       <Dialog open={isUserDialogOpen} onOpenChange={setIsUserDialogOpen}>
         <DialogContent className="sm:max-w-[400px]">
           <DialogHeader>
@@ -222,7 +297,7 @@ export default function Settings() {
               <Input id="uname" value={editingUser?.name || ""} onChange={(e) => setEditingUser({...editingUser, name: e.target.value})} />
             </div>
             <div className="space-y-2">
-              <Label htmlFor="uemail">Email</Label>
+              <Label htmlFor="uemail">Email Address</Label>
               <Input id="uemail" value={editingUser?.email || ""} onChange={(e) => setEditingUser({...editingUser, email: e.target.value})} />
             </div>
             <div className="space-y-2">
@@ -231,16 +306,37 @@ export default function Settings() {
                 id="urole" 
                 className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
                 value={editingUser?.role || "viewer"}
-                onChange={(e) => setEditingUser({...editingUser, role: e.target.value as any})}
+                onChange={(e) => setEditingUser({...editingUser, role: e.target.value})}
               >
-                <option value="admin">Administrator</option>
-                <option value="manager">Manager</option>
-                <option value="viewer">Viewer</option>
+                {roles.map(r => (
+                  <option key={r.id} value={r.id}>{r.name}</option>
+                ))}
               </select>
             </div>
           </div>
           <DialogFooter>
+            <Button variant="outline" onClick={() => setIsUserDialogOpen(false)}>Cancel</Button>
             <Button onClick={handleSaveUser}>Save User</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Role Dialog */}
+      <Dialog open={isRoleDialogOpen} onOpenChange={setIsRoleDialogOpen}>
+        <DialogContent className="sm:max-w-[400px]">
+          <DialogHeader>
+            <DialogTitle>Create New Role</DialogTitle>
+            <DialogDescription>Define a new role category. You can set permissions in the matrix afterward.</DialogDescription>
+          </DialogHeader>
+          <div className="grid gap-4 py-4">
+            <div className="space-y-2">
+              <Label htmlFor="rname">Role Name</Label>
+              <Input id="rname" value={newRoleName} onChange={(e) => setNewRoleName(e.target.value)} placeholder="e.g. Finance Admin" />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setIsRoleDialogOpen(false)}>Cancel</Button>
+            <Button onClick={handleAddRole}>Create Role</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>

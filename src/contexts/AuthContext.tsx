@@ -3,13 +3,14 @@ import React, { createContext, useContext, useState, useEffect } from "react";
 import { useLocation } from "wouter";
 import { toast } from "sonner";
 import api from "@/lib/api";
+import { roleService } from "@/lib/role-service";
 
 export interface ProfileHistoryItem {
   date: string;
   description: string;
 }
 
-export type UserRole = "admin" | "user";
+export type UserRole = string;
 
 export interface User {
   name: string;
@@ -23,6 +24,7 @@ export interface User {
   history?: ProfileHistoryItem[];
 }
 
+// Keep PERMISSIONS export as a reference for components that still import it
 export const PERMISSIONS = {
   DASHBOARD: { view: ["admin", "user"] },
   CLIENT_360: { view: ["admin", "user"], edit: ["admin", "user"] },
@@ -45,7 +47,7 @@ interface AuthContextType {
   loginWithSAML: () => void;
   register: (name: string, email: string) => void;
   updateProfile: (data: Partial<User>) => void;
-  hasPermission: (module: keyof typeof PERMISSIONS, action: "view" | "edit" | "manage") => boolean;
+  hasPermission: (moduleName: string, action: "view" | "edit" | "manage") => boolean;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -61,61 +63,35 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     if (storedToken && storedUser) {
       setUser(JSON.parse(storedUser));
     }
-    
-    // Handle OAuth Callback
-    const params = new URLSearchParams(window.location.search);
-    const authCode = params.get("code");
-    
-    if (authCode) {
-      handleLarkCallback(authCode);
-    } else {
-      setIsLoading(false);
-    }
+    setIsLoading(false);
   }, []);
 
-  const hasPermission = (module: keyof typeof PERMISSIONS, action: "view" | "edit" | "manage") => {
+  const hasPermission = (moduleName: string, action: "view" | "edit" | "manage") => {
     if (!user) return false;
-    const config = PERMISSIONS[module] as any;
-    if (!config[action]) return false;
-    return config[action].includes(user.role);
-  };
+    
+    // Admin always has full access
+    if (user.role === 'admin') return true;
 
-  const handleLarkCallback = async (code: string) => {
-    try {
-      window.history.replaceState({}, document.title, window.location.pathname);
-      const response = await api.post('/auth/lark/callback', { code });
-      const { token, user: apiUser } = response.data;
+    const roles = roleService.getAll();
+    const role = roles.find(r => r.id === user.role);
+    if (!role) return false;
 
-      const userData: User = {
-        name: apiUser.name,
-        email: apiUser.email || "",
-        role: apiUser.email && apiUser.email.includes('admin') ? 'admin' : 'user',
-        avatar: apiUser.avatar_url,
-        history: []
-      };
+    // Normalize module names to match role permissions map
+    const level = role.permissions[moduleName] || 'None';
 
-      setUser(userData);
-      localStorage.setItem("prasetia-user", JSON.stringify(userData));
-      localStorage.setItem("auth_token", token);
-      
-      toast.success("Successfully logged in with Lark");
-      setLocation("/");
-    } catch (error) {
-      console.error(error);
-      toast.error("Lark Authentication failed. Please try again.");
-    } finally {
-      setIsLoading(false);
+    if (action === "view") {
+      return level !== 'None';
     }
+    if (action === "edit") {
+      return level === 'Edit' || level === 'Full Access';
+    }
+    if (action === "manage") {
+      return level === 'Full Access';
+    }
+
+    return false;
   };
 
-  const loginWithLark = () => {
-    const appId = "cli_a7cc7a67e778d00c"; 
-    const redirectUri = window.location.origin;
-    const larkAuthUrl = `https://passport.larksuite.com/suite/passport/oauth/authorize?client_id=${appId}&redirect_uri=${encodeURIComponent(redirectUri)}&response_type=code&state=login`;
-    window.location.href = larkAuthUrl;
-  };
-
-  // Real Login Function
   const login = async (email: string, password?: string) => {
     try {
       const response = await api.post('/auth/login', { email, password });
@@ -136,19 +112,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       console.error("Login Error", error);
       const msg = error.response?.data?.error || "Login failed";
       toast.error(msg);
-      throw error; // Let the caller handle UI state
+      throw error;
     }
-  };
-
-  const loginWithSAML = () => toast.info("SAML not configured in this environment.");
-  const register = () => toast.info("Registration is disabled. Use SSO.");
-  
-  const updateProfile = (data: Partial<User>) => {
-    if (!user) return;
-    const updated = { ...user, ...data };
-    setUser(updated);
-    localStorage.setItem("prasetia-user", JSON.stringify(updated));
-    toast.success("Profile updated locally (Backend sync pending)");
   };
 
   const logout = () => {
@@ -157,6 +122,24 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     localStorage.removeItem("auth_token");
     toast.info("Logged out");
     setLocation("/login");
+  };
+
+  const loginWithLark = () => {
+    const appId = "cli_a7cc7a67e778d00c"; 
+    const redirectUri = window.location.origin;
+    const larkAuthUrl = `https://passport.larksuite.com/suite/passport/oauth/authorize?client_id=${appId}&redirect_uri=${encodeURIComponent(redirectUri)}&response_type=code&state=login`;
+    window.location.href = larkAuthUrl;
+  };
+
+  const loginWithSAML = () => toast.info("SAML not configured.");
+  const register = () => toast.info("Registration disabled.");
+  
+  const updateProfile = (data: Partial<User>) => {
+    if (!user) return;
+    const updated = { ...user, ...data };
+    setUser(updated);
+    localStorage.setItem("prasetia-user", JSON.stringify(updated));
+    toast.success("Profile updated locally");
   };
 
   return (

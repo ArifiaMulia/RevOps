@@ -20,7 +20,8 @@ RUN npm run build
 FROM node:20-alpine as production
 WORKDIR /app
 
-# Install production dependencies for backend
+# Install production dependencies for backend and curl for healthcheck
+RUN apk add --no-cache curl
 COPY server/package.json ./
 RUN npm install --production
 
