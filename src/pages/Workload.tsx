@@ -82,6 +82,9 @@ export default function Workload() {
   const [isMemberModalOpen, setIsMemberModalOpen] = useState(false);
   const [isLogModalOpen, setIsLogModalOpen] = useState(false);
   const [isUploadModalOpen, setIsUploadModalOpen] = useState(false);
+  const [isTaskDetailOpen, setIsTaskDetailOpen] = useState(false);
+  const [selectedTask, setSelectedTask] = useState<any>(null);
+  const [taskSearchTerm, setTaskSearchTerm] = useState("");
   const [editingMember, setEditingMember] = useState<TeamMember | null>(null);
   const [logs, setLogs] = useState<any[]>([]);
   const [logForm, setLogForm] = useState({
@@ -127,7 +130,14 @@ export default function Workload() {
     const reader = new FileReader();
     reader.onload = async (event) => {
       try {
-        const rawJson = JSON.parse(event.target?.result as string);
+        const text = event.target?.result as string;
+        let rawJson;
+        try {
+           rawJson = JSON.parse(text);
+        } catch (e) {
+           throw new Error("File is not a valid JSON. Please check if it's a real .base file.");
+        }
+
         if (!rawJson.gzipSnapshot) {
           throw new Error("Invalid .base file format (missing snapshot)");
         }
@@ -146,13 +156,20 @@ export default function Workload() {
         const decompressedText = await response.text();
         const content = JSON.parse(decompressedText);
 
-        // Access the schema and data
-        const schema = content[0]?.schema;
-        if (!schema) throw new Error("Could not find data schema in file");
+        // Access the schema and data - adjust based on actual .base structure observed
+        const schema = content[0]?.schema || content?.schema;
+        const dataBlock = schema?.data;
+        
+        if (!dataBlock) {
+           throw new Error("Structure mismatch: data block not found in decompressed content.");
+        }
 
-        const dataBlock = schema.data;
         const fieldMap = dataBlock?.table?.fieldMap || {};
         const recordMap = dataBlock?.recordMap || {};
+
+        if (Object.keys(recordMap).length === 0) {
+           throw new Error("No tasks found in the file.");
+        }
 
         const fieldIdToName = {};
         Object.entries(fieldMap).forEach(([id, f]: [string, any]) => {
@@ -160,7 +177,7 @@ export default function Workload() {
         });
 
         const formattedTasks = Object.entries(recordMap).map(([rid, rec]: [string, any]) => {
-          const clean: any = { id: rid };
+          const clean: any = { id: rid, raw: rec };
           Object.entries(rec).forEach(([fid, cell]: [string, any]) => {
             if (fid === 'id' || !cell) return;
             const fname = fieldIdToName[fid] || fid;
@@ -171,6 +188,7 @@ export default function Workload() {
               cleanVal = val.map((v: any) => v.text).join("");
             } else if (val && val.users) {
               cleanVal = val.users.map((u: any) => u.name).join(", ");
+              clean[fname + "_avatars"] = val.users.map((u: any) => u.avatarUrl);
             } else if (val && val.name) {
               cleanVal = val.name;
             }
@@ -181,23 +199,30 @@ export default function Workload() {
             id: clean.id,
             title: clean['Task title'] || "Untitled Task",
             assignee: clean['Owner'] || "Unassigned",
-            priority: (clean['Priority']?.toLowerCase() || 'medium') as any,
+            assignee_avatars: clean['Owner_avatars'] || [],
+            priority: (clean['Priority'] || 'medium').toLowerCase() as any,
             status: clean['Completion status'] === 'Completed' ? 'completed' : 'todo',
-            dueDate: clean['Due date'] || "2025-11-12",
-            isLarkSynced: true
+            dueDate: clean['Due date'] || clean['Created on'] || "2025-11-12",
+            description: clean['Task list'] || "", // Description usually in 'Task list' or custom field
+            milestone: clean['Milestone'] || "",
+            creator: clean['Creator'] || "",
+            isLarkSynced: true,
+            fullData: clean
           };
         });
 
-        setTasks(prev => [...formattedTasks.slice(0, 100), ...prev]);
+        setTasks(prev => [...formattedTasks, ...prev]);
         toast.success(`Successfully imported ${formattedTasks.length} tasks!`);
         setIsUploadModalOpen(false);
+        // Clear input value so same file can be uploaded again
+        e.target.value = "";
       } catch (err: any) {
-        console.error("Upload error:", err);
-        toast.error(`Error: ${err.message || "Unknown processing error"}`);
+        console.error("Upload error details:", err);
+        toast.error(`Error: ${err.message || "Failed to process .base file"}`);
       }
     };
 
-    reader.onerror = () => toast.error("Failed to read file");
+    reader.onerror = () => toast.error("Failed to read file from disk.");
     reader.readAsText(file);
   };
 
@@ -448,47 +473,82 @@ export default function Workload() {
       </div>
 
       <div className="grid gap-6 md:grid-cols-3">
-        {/* Task List - Moved here for better layout */}
+        {/* Task List - Expanded with search and clickable rows */}
         <Card className="md:col-span-2">
-          <CardHeader>
-            <CardTitle>Task List</CardTitle>
-            <CardDescription>Detailed breakdown of ongoing activities.</CardDescription>
+          <CardHeader className="flex flex-row items-center justify-between">
+            <div>
+              <CardTitle>Task List</CardTitle>
+              <CardDescription>Detailed breakdown of ongoing activities.</CardDescription>
+            </div>
+            <div className="relative w-64">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+              <Input 
+                placeholder="Search tasks..." 
+                className="pl-9 h-8 text-xs" 
+                value={taskSearchTerm}
+                onChange={(e) => setTaskSearchTerm(e.target.value)}
+              />
+            </div>
           </CardHeader>
           <CardContent>
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Task Title</TableHead>
-                  <TableHead>Assignee</TableHead>
-                  <TableHead>Priority</TableHead>
-                  <TableHead>Due Date</TableHead>
-                  <TableHead>Status</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {tasks.map((task) => (
-                  <TableRow key={task.id}>
-                    <TableCell className="font-medium">{task.title}</TableCell>
-                    <TableCell className="text-sm">{task.assignee}</TableCell>
-                    <TableCell>
-                      <Badge variant="outline" className={
-                        task.priority === 'high' ? 'border-red-200 text-red-700 bg-red-50' :
-                        task.priority === 'medium' ? 'border-orange-200 text-orange-700 bg-orange-50' :
-                        'border-slate-200 text-slate-700 bg-slate-50'
-                      }>
-                        {task.priority.toUpperCase()}
-                      </Badge>
-                    </TableCell>
-                    <TableCell className="text-sm">{task.dueDate}</TableCell>
-                    <TableCell>
-                      <Badge variant={task.status === 'completed' ? 'default' : 'secondary'}>
-                        {task.status.replace('_', ' ').toUpperCase()}
-                      </Badge>
-                    </TableCell>
+            <div className="max-h-[600px] overflow-auto border rounded-lg">
+              <Table>
+                <TableHeader className="bg-slate-50 sticky top-0 z-10">
+                  <TableRow>
+                    <TableHead className="w-[40%]">Task Title</TableHead>
+                    <TableHead>Assignee</TableHead>
+                    <TableHead>Priority</TableHead>
+                    <TableHead>Due Date</TableHead>
+                    <TableHead>Status</TableHead>
                   </TableRow>
-                ))}
-              </TableBody>
-            </Table>
+                </TableHeader>
+                <TableBody>
+                  {tasks
+                    .filter(t => 
+                      t.title.toLowerCase().includes(taskSearchTerm.toLowerCase()) || 
+                      t.assignee.toLowerCase().includes(taskSearchTerm.toLowerCase())
+                    )
+                    .map((task) => (
+                    <TableRow 
+                      key={task.id} 
+                      className="cursor-pointer hover:bg-slate-50 transition-colors"
+                      onClick={() => {
+                        setSelectedTask(task);
+                        setIsTaskDetailOpen(true);
+                      }}
+                    >
+                      <TableCell className="font-medium text-xs py-3">{task.title}</TableCell>
+                      <TableCell className="text-xs">{task.assignee}</TableCell>
+                      <TableCell>
+                        <Badge variant="outline" className={cn(
+                          "text-[10px] px-1.5 h-5",
+                          task.priority === 'high' ? 'border-red-200 text-red-700 bg-red-50' :
+                          task.priority === 'medium' ? 'border-orange-200 text-orange-700 bg-orange-50' :
+                          'border-slate-200 text-slate-700 bg-slate-50'
+                        )}>
+                          {task.priority.toUpperCase()}
+                        </Badge>
+                      </TableCell>
+                      <TableCell className="text-[10px] text-muted-foreground">
+                        {typeof task.dueDate === 'number' ? new Date(task.dueDate).toLocaleDateString() : task.dueDate}
+                      </TableCell>
+                      <TableCell>
+                        <Badge variant={task.status === 'completed' ? 'default' : 'secondary'} className="text-[10px] px-1.5 h-5">
+                          {task.status.replace('_', ' ').toUpperCase()}
+                        </Badge>
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                  {tasks.length === 0 && (
+                    <TableRow>
+                      <TableCell colSpan={5} className="text-center py-20 text-muted-foreground italic">
+                        No tasks found. Please upload a .base file.
+                      </TableCell>
+                    </TableRow>
+                  )}
+                </TableBody>
+              </Table>
+            </div>
           </CardContent>
         </Card>
 
@@ -774,6 +834,155 @@ export default function Workload() {
             <Button variant="outline" onClick={() => setIsLogModalOpen(false)}>Cancel</Button>
             <Button onClick={handleSaveLog} className="bg-indigo-600 hover:bg-indigo-700">Save Log</Button>
           </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Lark Style Task Detail Modal */}
+      <Dialog open={isTaskDetailOpen} onOpenChange={setIsTaskDetailOpen}>
+        <DialogContent className="sm:max-w-[700px] p-0 overflow-hidden border-none shadow-2xl rounded-xl">
+          <div className="flex flex-col h-[85vh] bg-white">
+            {/* Modal Header Actions */}
+            <div className="flex items-center justify-between px-6 py-3 border-b bg-slate-50/50">
+              <Button 
+                variant="outline" 
+                size="sm" 
+                className={cn(
+                  "rounded-full gap-2 text-xs font-bold",
+                  selectedTask?.status === 'completed' ? "bg-emerald-50 text-emerald-700 border-emerald-200" : ""
+                )}
+                onClick={() => {
+                  const newStatus = selectedTask?.status === 'completed' ? 'todo' : 'completed';
+                  setTasks(tasks.map(t => t.id === selectedTask.id ? { ...t, status: newStatus } : t));
+                  setSelectedTask({ ...selectedTask, status: newStatus });
+                  toast.success(`Task marked as ${newStatus}`);
+                }}
+              >
+                <CheckCircle2 className={cn("w-4 h-4", selectedTask?.status === 'completed' ? "fill-emerald-500 text-white" : "")} />
+                {selectedTask?.status === 'completed' ? "Completed" : "Mark Complete"}
+              </Button>
+              <div className="flex items-center gap-2">
+                <Button variant="ghost" size="icon" className="h-8 w-8"><ExternalLink className="w-4 h-4 text-slate-400" /></Button>
+                <Button variant="ghost" size="icon" className="h-8 w-8"><MoreVertical className="w-4 h-4 text-slate-400" /></Button>
+              </div>
+            </div>
+
+            {/* Content Area */}
+            <div className="flex-1 overflow-y-auto px-10 py-8 space-y-8">
+              {/* Title Section */}
+              <div className="space-y-4">
+                <h2 className="text-2xl font-bold leading-tight text-slate-900">
+                  {selectedTask?.title}
+                </h2>
+                {selectedTask?.milestone && (
+                  <Badge className="bg-blue-50 text-blue-600 border-blue-100 hover:bg-blue-100 font-medium">
+                    Created in: {selectedTask.milestone}
+                  </Badge>
+                )}
+              </div>
+
+              {/* Attributes Grid */}
+              <div className="space-y-6">
+                <div className="flex items-start gap-12">
+                  <div className="flex items-center gap-4 w-32 shrink-0">
+                    <Users className="w-4 h-4 text-slate-400" />
+                    <span className="text-sm text-slate-500">Owners</span>
+                  </div>
+                  <div className="flex items-center gap-3 flex-wrap">
+                    <div className="flex -space-x-2">
+                       {selectedTask?.assignee_avatars?.length > 0 ? (
+                         selectedTask.assignee_avatars.map((url, i) => (
+                           <div key={i} className="w-7 h-7 rounded-full border-2 border-white overflow-hidden bg-slate-100">
+                             <img src={url} alt="avatar" className="w-full h-full object-cover" />
+                           </div>
+                         ))
+                       ) : (
+                        <div className="w-7 h-7 rounded-full border-2 border-white bg-blue-500 flex items-center justify-center text-[10px] text-white font-bold">
+                          {selectedTask?.assignee?.substring(0,1)}
+                        </div>
+                       )}
+                    </div>
+                    <span className="text-sm font-medium text-slate-700">{selectedTask?.assignee}</span>
+                    <Badge variant="outline" className="text-[10px] font-bold text-slate-400">{selectedTask?.assignee_avatars?.length || 1} owners</Badge>
+                    <div className="h-4 w-[1px] bg-slate-200 mx-1" />
+                    <Button variant="ghost" size="sm" className="h-7 text-xs font-medium text-slate-600 gap-1 px-2">
+                      Default Group <ChevronDown className="w-3 h-3" />
+                    </Button>
+                  </div>
+                </div>
+
+                <div className="flex items-start gap-12">
+                  <div className="flex items-center gap-4 w-32 shrink-0">
+                    <Calendar className="w-4 h-4 text-slate-400" />
+                    <span className="text-sm text-slate-500">Due Date</span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <Button variant="secondary" size="sm" className="h-8 rounded-lg bg-blue-50 text-blue-700 hover:bg-blue-100 text-xs font-bold gap-2">
+                       <Calendar className="w-3.5 h-3.5" /> Today
+                    </Button>
+                    <Button variant="outline" size="sm" className="h-8 rounded-lg text-xs font-medium gap-2">
+                       Tomorrow
+                    </Button>
+                    <Button variant="outline" size="sm" className="h-8 rounded-lg text-xs font-medium gap-2">
+                       Other
+                    </Button>
+                  </div>
+                </div>
+
+                <div className="space-y-4 pt-4 border-t">
+                  <button className="flex items-center gap-3 w-full text-slate-400 hover:text-slate-600 transition-colors py-1 group">
+                    <Plus className="w-4 h-4 group-hover:scale-110 transition-transform" />
+                    <span className="text-sm">Add to Task List</span>
+                  </button>
+                  <button className="flex items-center gap-3 w-full text-slate-400 hover:text-slate-600 transition-colors py-1 group">
+                    <Settings2 className="w-4 h-4 group-hover:scale-110 transition-transform" />
+                    <span className="text-sm">Add Description</span>
+                  </button>
+                  <div className="pl-7 text-sm text-slate-600 leading-relaxed">
+                    {selectedTask?.description}
+                  </div>
+                  <button className="flex items-center gap-3 w-full text-slate-400 hover:text-slate-600 transition-colors py-1 group">
+                    <Layers className="w-4 h-4 group-hover:scale-110 transition-transform" />
+                    <span className="text-sm">Add Sub-task</span>
+                  </button>
+                  <button className="flex items-center gap-3 w-full text-slate-400 hover:text-slate-600 transition-colors py-1 group">
+                    <ExternalLink className="w-4 h-4 group-hover:scale-110 transition-transform" />
+                    <span className="text-sm">Add Attachment</span>
+                  </button>
+                </div>
+              </div>
+
+              {/* Comment Section Mockup */}
+              <div className="pt-10 space-y-4">
+                 <h3 className="text-sm font-bold text-slate-900">Comment</h3>
+                 <div className="relative border rounded-xl p-3 focus-within:ring-2 ring-blue-100 bg-slate-50/30">
+                    <textarea 
+                      placeholder="Add a comment"
+                      className="w-full bg-transparent border-none outline-none text-sm resize-none min-h-[60px]"
+                    />
+                    <div className="flex items-center justify-between mt-2 pt-2 border-t">
+                       <div className="flex items-center gap-3">
+                          <Button variant="ghost" size="icon" className="h-7 w-7"><Mail className="w-4 h-4 text-slate-400" /></Button>
+                          <Button variant="ghost" size="icon" className="h-7 w-7 text-xs font-bold text-slate-400 underline">Aa</Button>
+                       </div>
+                       <Button size="sm" className="h-8 rounded-full px-5 bg-blue-600 hover:bg-blue-700">Send</Button>
+                    </div>
+                 </div>
+              </div>
+            </div>
+            
+            {/* Modal Footer / Subscribers */}
+            <div className="px-10 py-4 border-t flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <div className="flex -space-x-1.5">
+                  <div className="w-6 h-6 rounded-full bg-slate-200 border border-white" />
+                  <div className="w-6 h-6 rounded-full bg-slate-300 border border-white" />
+                </div>
+                <span className="text-xs text-slate-500 font-medium">3 subscribers</span>
+                <Button variant="ghost" size="icon" className="h-7 w-7 rounded-full border"><Plus className="w-3 h-3 text-slate-400" /></Button>
+              </div>
+              <Button variant="ghost" className="text-xs text-slate-400 font-medium" onClick={() => setIsTaskDetailOpen(false)}>Close</Button>
+            </div>
+          </div>
         </DialogContent>
       </Dialog>
     </div>
