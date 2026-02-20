@@ -17,7 +17,12 @@ import {
   BarChart4,
   Trash2,
   Pencil,
-  Upload
+  Upload,
+  Search,
+  MoreVertical,
+  ChevronDown,
+  ChevronRight,
+  Layers
 } from "lucide-react";
 import {
   Dialog,
@@ -39,6 +44,7 @@ import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { useState, useEffect } from "react";
 import { workloadService, type TeamMember } from "@/lib/workload-service";
+import { cn } from "@/lib/utils";
 import { 
   Radar, 
   RadarChart, 
@@ -85,6 +91,7 @@ export default function Workload() {
   const [isTaskDetailOpen, setIsTaskDetailOpen] = useState(false);
   const [selectedTask, setSelectedTask] = useState<any>(null);
   const [taskSearchTerm, setTaskSearchTerm] = useState("");
+  const [expandedOwners, setExpandedOwners] = useState<Record<string, boolean>>({});
   const [editingMember, setEditingMember] = useState<TeamMember | null>(null);
   const [logs, setLogs] = useState<any[]>([]);
   const [logForm, setLogForm] = useState({
@@ -315,6 +322,13 @@ export default function Workload() {
     setIsAutomationOpen(false);
   };
 
+  const toggleOwner = (owner: string) => {
+    setExpandedOwners(prev => ({
+      ...prev,
+      [owner]: !prev[owner]
+    }));
+  };
+
   const getMemberPerformanceData = () => {
     const member = members.find(m => m.id === selectedMember);
     if (!member) return [];
@@ -492,62 +506,95 @@ export default function Workload() {
           </CardHeader>
           <CardContent>
             <div className="max-h-[600px] overflow-auto border rounded-lg">
-              <Table>
-                <TableHeader className="bg-slate-50 sticky top-0 z-10">
-                  <TableRow>
-                    <TableHead className="w-[40%]">Task Title</TableHead>
-                    <TableHead>Assignee</TableHead>
-                    <TableHead>Priority</TableHead>
-                    <TableHead>Due Date</TableHead>
-                    <TableHead>Status</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {tasks
-                    .filter(t => 
-                      t.title.toLowerCase().includes(taskSearchTerm.toLowerCase()) || 
-                      t.assignee.toLowerCase().includes(taskSearchTerm.toLowerCase())
-                    )
-                    .map((task) => (
-                    <TableRow 
-                      key={task.id} 
-                      className="cursor-pointer hover:bg-slate-50 transition-colors"
-                      onClick={() => {
-                        setSelectedTask(task);
-                        setIsTaskDetailOpen(true);
-                      }}
-                    >
-                      <TableCell className="font-medium text-xs py-3">{task.title}</TableCell>
-                      <TableCell className="text-xs">{task.assignee}</TableCell>
-                      <TableCell>
-                        <Badge variant="outline" className={cn(
-                          "text-[10px] px-1.5 h-5",
-                          task.priority === 'high' ? 'border-red-200 text-red-700 bg-red-50' :
-                          task.priority === 'medium' ? 'border-orange-200 text-orange-700 bg-orange-50' :
-                          'border-slate-200 text-slate-700 bg-slate-50'
-                        )}>
-                          {task.priority.toUpperCase()}
-                        </Badge>
-                      </TableCell>
-                      <TableCell className="text-[10px] text-muted-foreground">
-                        {typeof task.dueDate === 'number' ? new Date(task.dueDate).toLocaleDateString() : task.dueDate}
-                      </TableCell>
-                      <TableCell>
-                        <Badge variant={task.status === 'completed' ? 'default' : 'secondary'} className="text-[10px] px-1.5 h-5">
-                          {task.status.replace('_', ' ').toUpperCase()}
-                        </Badge>
-                      </TableCell>
-                    </TableRow>
-                  ))}
-                  {tasks.length === 0 && (
-                    <TableRow>
-                      <TableCell colSpan={5} className="text-center py-20 text-muted-foreground italic">
-                        No tasks found. Please upload a .base file.
-                      </TableCell>
-                    </TableRow>
-                  )}
-                </TableBody>
-              </Table>
+              {tasks.length === 0 ? (
+                <div className="text-center py-20 text-muted-foreground italic">
+                  No tasks found. Please upload a .base file.
+                </div>
+              ) : (
+                <div className="divide-y">
+                  {Object.entries(
+                    tasks
+                      .filter(t => 
+                        t.title.toLowerCase().includes(taskSearchTerm.toLowerCase()) || 
+                        t.assignee.toLowerCase().includes(taskSearchTerm.toLowerCase())
+                      )
+                      .reduce((acc, task) => {
+                        const owner = task.assignee || "Unassigned";
+                        if (!acc[owner]) acc[owner] = [];
+                        acc[owner].push(task);
+                        return acc;
+                      }, {} as Record<string, Task[]>)
+                  ).map(([owner, ownerTasks]) => {
+                    const isExpanded = expandedOwners[owner] !== false; // Default expanded
+                    const completedCount = ownerTasks.filter(t => t.status === 'completed').length;
+                    
+                    return (
+                      <div key={owner} className="bg-white">
+                        <div 
+                          className="flex items-center justify-between px-4 py-3 cursor-pointer hover:bg-slate-50 bg-slate-50/30 transition-colors border-b"
+                          onClick={() => toggleOwner(owner)}
+                        >
+                          <div className="flex items-center gap-3">
+                            {isExpanded ? <ChevronDown className="w-4 h-4 text-slate-400" /> : <ChevronRight className="w-4 h-4 text-slate-400" />}
+                            <div className="w-7 h-7 rounded-full bg-blue-100 flex items-center justify-center text-[10px] font-bold text-blue-700">
+                              {owner.substring(0, 1)}
+                            </div>
+                            <span className="font-semibold text-sm text-slate-700">{owner}</span>
+                            <Badge variant="secondary" className="text-[10px] h-5 bg-slate-100">
+                              {ownerTasks.length} Tasks
+                            </Badge>
+                          </div>
+                          <div className="flex items-center gap-4 text-xs text-muted-foreground">
+                            <span className="hidden sm:inline">Progress: {completedCount}/{ownerTasks.length}</span>
+                            <Progress value={(completedCount / ownerTasks.length) * 100} className="w-20 h-1.5" />
+                          </div>
+                        </div>
+                        
+                        {isExpanded && (
+                          <div className="animate-in fade-in slide-in-from-top-1 duration-200">
+                            <Table>
+                              <TableBody>
+                                {ownerTasks.map((task) => (
+                                  <TableRow 
+                                    key={task.id} 
+                                    className="cursor-pointer hover:bg-slate-50/80 transition-colors border-l-4 border-l-transparent hover:border-l-blue-400"
+                                    onClick={() => {
+                                      setSelectedTask(task);
+                                      setIsTaskDetailOpen(true);
+                                    }}
+                                  >
+                                    <TableCell className="font-medium text-[11px] py-2.5 pl-10 w-[40%]">
+                                      {task.title}
+                                    </TableCell>
+                                    <TableCell>
+                                      <Badge variant="outline" className={cn(
+                                        "text-[9px] px-1.5 h-4.5 font-bold",
+                                        task.priority === 'high' ? 'border-red-200 text-red-700 bg-red-50' :
+                                        task.priority === 'medium' ? 'border-orange-200 text-orange-700 bg-orange-50' :
+                                        'border-slate-200 text-slate-700 bg-slate-50'
+                                      )}>
+                                        {task.priority.toUpperCase()}
+                                      </Badge>
+                                    </TableCell>
+                                    <TableCell className="text-[10px] text-muted-foreground">
+                                      {typeof task.dueDate === 'number' ? new Date(task.dueDate).toLocaleDateString() : task.dueDate}
+                                    </TableCell>
+                                    <TableCell className="text-right pr-6">
+                                      <Badge variant={task.status === 'completed' ? 'default' : 'secondary'} className="text-[9px] px-1.5 h-4.5 bg-opacity-80">
+                                        {task.status.replace('_', ' ').toUpperCase()}
+                                      </Badge>
+                                    </TableCell>
+                                  </TableRow>
+                                ))}
+                              </TableBody>
+                            </Table>
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
             </div>
           </CardContent>
         </Card>
